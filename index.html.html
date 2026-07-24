@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>线性代数：3D 空间可视化全景演示</title>
+    <style>
+        :root {
+            --primary: #2c3e50;
+            --accent: #3498db;
+            --accent-light: #ebf5fb;
+            --bg: #f0f2f5;
+            --text: #333;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg);
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: var(--text);
+            overflow: hidden;
+        }
+
+        .app-container {
+            width: 95vw;
+            height: 95vh;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.15);
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* ===== 3D 视图 ===== */
+        .view-3d {
+            flex: 0 0 50%;
+            background: #1a1a1a;
+            position: relative;
+            cursor: grab;
+            perspective: 1000px;
+            min-width: 0;
+            overflow: hidden;
+            border-radius: 12px 0 0 12px;
+        }
+        .view-3d:active { cursor: grabbing; }
+
+        .scene {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            transform-style: preserve-3d;
+            transition: transform 0.1s ease-out;
+        }
+
+        /* 坐标轴 */
+        .axis {
+            position: absolute;
+            width: 100%;
+            height: 2px;
+            background: rgba(255,255,255,0.15);
+            top: 50%;
+            left: 0%;
+            transform-origin: center center;
+            pointer-events: none;
+        }
+        .axis.x { 
+            transform: rotateZ(0deg); 
+            background: #e74c3c;
+            width: 80%;
+            left: 10%;
+        }
+        .axis.y { 
+            transform: rotateZ(-90deg); 
+            background: #2ecc71;
+            width: 80%;
+            left: 10%;
+        }
+        .axis.z { 
+            transform: rotateX(90deg); 
+            background: #3498db;
+            width: 80%;
+            left: 10%;
+        }
+
+        .axis::after {
+            content: '';
+            position: absolute;
+            right: -6px;
+            top: -4px;
+            width: 0;
+            height: 0;
+            border-left: 8px solid currentColor;
+            border-top: 5px solid transparent;
+            border-bottom: 5px solid transparent;
+        }
+
+        .cube {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            top: 50%;
+            left: 50%;
+            margin: -20px 0 0 -20px;
+            transform-style: preserve-3d;
+            transition: all 0.5s ease;
+        }
+        .face {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid rgba(0,0,0,0.1);
+            box-sizing: border-box;
+        }
+        .front  { transform: translateZ(20px); }
+        .back   { transform: translateZ(-20px) rotateY(180deg); }
+        .right  { transform: translateX(20px) rotateY(90deg); }
+        .left   { transform: translateX(-20px) rotateY(-90deg); }
+        .top    { transform: translateY(-20px) rotateX(90deg); }
+        .bottom { transform: translateY(20px) rotateX(-90deg); }
+
+        /* ===== 右侧面板 ===== */
+        .right-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            border-left: 1px solid #eee;
+            background: #fff;
+            overflow: hidden;
+            min-width: 0;
+            height: 100%;
+        }
+
+        /* ===== 顶部：内容区 ===== */
+        .content-panel {
+            padding: 18px 28px 12px;
+            overflow-y: auto;
+            flex: 0 0 45%;
+            min-height: 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .content-panel h2 { 
+            margin-top: 0; 
+            color: var(--primary);
+            font-size: 1.4rem;
+            font-weight: 700;
+            letter-spacing: -0.3px;
+        }
+        .concept-tag {
+            display: inline-block;
+            background: var(--accent);
+            color: white;
+            padding: 3px 12px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            margin-bottom: 8px;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+        }
+        .content-panel p {
+            line-height: 1.7;
+            color: #444;
+            margin: 8px 0;
+            font-size: 0.95rem;
+        }
+        .analogy {
+            background: #f8f9fa;
+            border-left: 4px solid var(--accent);
+            padding: 12px 16px;
+            font-style: italic;
+            margin: 12px 0 0;
+            color: #555;
+            font-size: 0.9rem;
+            border-radius: 0 4px 4px 0;
+            line-height: 1.6;
+        }
+
+        /* ===== 中部：导航区（核心 - 永远可见且面积大） ===== */
+        .nav-map {
+            padding: 12px 24px 10px;
+            background: linear-gradient(135deg, #f8faff 0%, #f0f4ff 100%);
+            border-bottom: 2px solid #e8edf5;
+            flex: 1 1 auto;
+            overflow-y: auto;
+            overflow-x: hidden;
+            min-height: 120px;
+            max-height: 45%;
+        }
+
+        .nav-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            flex-shrink: 0;
+        }
+
+        .nav-map-title {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: #8899aa;
+            font-weight: 700;
+        }
+
+        .nav-stats {
+            font-size: 0.65rem;
+            color: #99aabb;
+            font-weight: 500;
+        }
+        .nav-stats span {
+            color: var(--accent);
+            font-weight: 700;
+        }
+
+        .nav-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            padding: 4px 0;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 14px 5px 8px;
+            border-radius: 20px;
+            font-size: 0.78rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            background: rgba(255,255,255,0.7);
+            color: #888;
+            border: 2px solid #e8ecf2;
+            white-space: nowrap;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        }
+
+        .nav-item .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            transition: all 0.3s ease;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .nav-item .label {
+            transition: color 0.3s ease;
+            font-size: 0.78rem;
+        }
+
+        .nav-item .badge {
+            font-size: 0.55rem;
+            background: rgba(0,0,0,0.05);
+            padding: 0 6px;
+            border-radius: 10px;
+            color: #aaa;
+            font-weight: 600;
+        }
+
+        .nav-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(52, 152, 219, 0.15);
+            border-color: #c0d0e0;
+            background: white;
+        }
+
+        .nav-item.active {
+            background: white;
+            border-color: var(--accent);
+            color: var(--primary);
+            box-shadow: 0 4px 16px rgba(52, 152, 219, 0.25);
+            transform: translateY(-2px) scale(1.02);
+        }
+
+        .nav-item.active .label {
+            color: var(--primary);
+            font-weight: 700;
+        }
+
+        .nav-item.active .badge {
+            background: rgba(52, 152, 219, 0.15);
+            color: var(--accent);
+        }
+
+        .nav-item.visited {
+            opacity: 0.65;
+        }
+        .nav-item.visited .dot {
+            opacity: 0.6;
+        }
+
+        .nav-item .module-label {
+            font-size: 0.5rem;
+            color: #bbb;
+            margin-left: 2px;
+            font-weight: 400;
+        }
+
+        .nav-divider {
+            width: 2px;
+            height: 24px;
+            background: linear-gradient(to bottom, transparent, #d0d8e0, transparent);
+            margin: 0 4px;
+            flex-shrink: 0;
+            border-radius: 2px;
+        }
+
+        /* 模块标签行 */
+        .module-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 3px 8px;
+            margin-bottom: 6px;
+            padding: 4px 0 2px 0;
+            border-bottom: 1px dashed #e8ecf2;
+            width: 100%;
+        }
+
+        .module-name {
+            font-size: 0.6rem;
+            font-weight: 600;
+            color: #99aabb;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            padding-right: 6px;
+        }
+
+        /* ===== 底部：控制按钮 ===== */
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 28px 12px;
+            flex-shrink: 0;
+            background: #fafbfc;
+            border-top: 1px solid #eee;
+        }
+        .controls button {
+            padding: 8px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+        .btn-prev { background: #e8ecf2; color: #555; }
+        .btn-next { background: var(--primary); color: white; }
+        .btn-prev:hover:not(:disabled) { background: #d5dce6; }
+        .btn-next:hover:not(:disabled) { background: #1a2a3a; }
+        button:disabled { opacity: 0.35; cursor: not-allowed; }
+
+        #page-indicator {
+            color: #99aabb;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+        #page-indicator .current {
+            color: var(--primary);
+            font-weight: 700;
+            font-size: 1rem;
+        }
+
+        /* ===== 滚动条 ===== */
+        .nav-map::-webkit-scrollbar,
+        .content-panel::-webkit-scrollbar {
+            width: 4px;
+        }
+        .nav-map::-webkit-scrollbar-track,
+        .content-panel::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .nav-map::-webkit-scrollbar-thumb,
+        .content-panel::-webkit-scrollbar-thumb {
+            background: #d5dce6;
+            border-radius: 4px;
+        }
+
+        /* ===== 响应式 ===== */
+        @media (max-width: 1000px) {
+            .view-3d { flex: 0 0 42%; }
+            .content-panel { flex: 0 0 40%; padding: 14px 20px 10px; }
+            .content-panel h2 { font-size: 1.2rem; }
+            .content-panel p { font-size: 0.85rem; }
+            .analogy { font-size: 0.8rem; padding: 10px 14px; }
+            .nav-map { padding: 10px 16px 8px; min-height: 100px; }
+            .nav-item { font-size: 0.68rem; padding: 4px 10px 4px 6px; }
+            .nav-item .label { font-size: 0.68rem; }
+            .controls { padding: 6px 20px 10px; }
+            .controls button { padding: 6px 18px; font-size: 0.8rem; }
+            .nav-item .module-label { display: none; }
+        }
+
+        @media (max-width: 700px) {
+            .app-container {
+                flex-direction: column;
+                height: 98vh;
+                width: 98vw;
+                border-radius: 8px;
+            }
+            .view-3d {
+                flex: 0 0 32vh;
+                border-radius: 8px 8px 0 0;
+            }
+            .right-panel {
+                flex: 1;
+                border-left: none;
+                border-top: 1px solid #eee;
+            }
+            .content-panel {
+                flex: 0 0 30%;
+                padding: 10px 14px 8px;
+            }
+            .content-panel h2 { font-size: 1rem; }
+            .content-panel p { font-size: 0.8rem; line-height: 1.5; }
+            .analogy { font-size: 0.75rem; padding: 8px 12px; }
+            .nav-map {
+                min-height: 80px;
+                max-height: 40%;
+                padding: 8px 12px 6px;
+            }
+            .nav-header { margin-bottom: 6px; }
+            .nav-map-title { font-size: 0.55rem; }
+            .nav-stats { font-size: 0.5rem; }
+            .nav-item {
+                font-size: 0.55rem;
+                padding: 3px 7px 3px 4px;
+                gap: 4px;
+                border-width: 1.5px;
+            }
+            .nav-item .label { font-size: 0.55rem; }
+            .nav-item .badge { display: none; }
+            .nav-item .dot { width: 7px; height: 7px; }
+            .nav-divider { height: 16px; margin: 0 2px; }
+            .module-name { font-size: 0.5rem; }
+            .controls { padding: 4px 12px 8px; }
+            .controls button { padding: 4px 12px; font-size: 0.7rem; }
+            #page-indicator { font-size: 0.7rem; }
+            .axis.x, .axis.y, .axis.z { width: 70%; left: 15%; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <!-- 3D 视图 -->
+    <div class="view-3d" id="view3D">
+        <div class="scene" id="scene">
+            <div class="axis x"></div>
+            <div class="axis y"></div>
+            <div class="axis z"></div>
+        </div>
+    </div>
+
+    <!-- 右侧面板 -->
+    <div class="right-panel">
+        <!-- 内容区 -->
+        <div class="content-panel" id="text-content"></div>
+
+        <!-- 导航区（核心 - 永远可见且面积大） -->
+        <div class="nav-map" id="navMap">
+            <div class="nav-header">
+                <div class="nav-map-title">📐 概念导航 · 点击跳转</div>
+                <div class="nav-stats" id="navStats">已探索 <span id="exploredCount">1</span> / <span id="totalCount">17</span> 个概念</div>
+            </div>
+            <div class="nav-grid" id="navGrid"></div>
+        </div>
+
+        <!-- 控制按钮 -->
+        <div class="controls">
+            <button class="btn-prev" onclick="prevStep()" id="btnPrev">◀ 上一步</button>
+            <span id="page-indicator"><span class="current" id="currentNum">1</span> / <span id="totalNum">17</span></span>
+            <button class="btn-next" onclick="nextStep()" id="btnNext">下一步 ▶</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ==================== 数据 ====================
+    const pages = [
+        { title: "向量：空间的基石", tag: "Vector", module: "向量",
+          text: "向量不仅仅是数字列表，它是空间中的一个箭头。想象它是一块标准的建筑预制板，有长度和方向。",
+          analogy: "💡 类比：向量就像乐高积木。单个积木（向量）本身没有意义，但它有确定的形状和大小。",
+          cubes: [{ color: '#e74c3c', x: 0, y: 0, z: 0 }] },
+        { title: "线性组合：搭建结构", tag: "Linear Combination", module: "向量",
+          text: "当我们把向量相加（拼接）或数乘（拉伸）时，我们在构建新的结构。这就是线性组合。",
+          analogy: "🏗️ 类比：把两块积木拼在一起，或者把一块积木拉长两倍。我们在用基础材料创造新形状。",
+          cubes: [
+            { color: '#e74c3c', x: -60, y: 0, z: 0 },
+            { color: '#2ecc71', x: 60, y: 0, z: 0 },
+            { color: '#f1c40f', x: 0, y: 60, z: 0 }
+          ] },
+        { title: "线性相关：冗余的积木", tag: "Linear Dependence", module: "线性相关",
+          text: "如果一组向量中，有一个向量可以被其他向量表示，它就是多余的。",
+          analogy: "🚫 类比：如果你已经有了一个 2米长的柱子，再拿一个 1米长的柱子拼起来，其实并没有增加新的方向，只是重复了已有的路。",
+          cubes: [
+            { color: '#e74c3c', x: -40, y: 0, z: 0 },
+            { color: '#e74c3c', x: 0, y: 0, z: 0 },
+            { color: '#e74c3c', x: 40, y: 0, z: 0 }
+          ] },
+        { title: "基底与维数：坐标系", tag: "Basis & Dimension", module: "基底与维数",
+          text: "基底是空间中一组线性无关的向量，它们能张成整个空间。维数就是基底的个数。",
+          analogy: "📐 类比：要在房间里定位一个点，你需要长、宽、高三个方向。这三个方向就是三维空间的\"基底\"。",
+          cubes: [
+            { color: '#e74c3c', x: 0, y: 0, z: 0 },
+            { color: '#e74c3c', x: 60, y: 0, z: 0 },
+            { color: '#2ecc71', x: 0, y: 60, z: 0 },
+            { color: '#3498db', x: 0, y: 0, z: 60 }
+          ] },
+        { title: "秩：有效信息的数量", tag: "Rank", module: "秩",
+          text: "秩是矩阵中线性无关的行或列的最大数目。它代表了矩阵所能张成的空间的维数。",
+          analogy: "🔢 类比：你有一堆不同方向的积木，但其中很多是重复的。秩就是去掉重复后，真正能撑起空间的积木数量。",
+          cubes: [
+            { color: '#9b59b6', x: -40, y: -40, z: 0 },
+            { color: '#9b59b6', x: 40, y: -40, z: 0 },
+            { color: '#9b59b6', x: -40, y: 40, z: 0 },
+            { color: '#9b59b6', x: 40, y: 40, z: 0 },
+            { color: '#f39c12', x: 0, y: 0, z: 0, scale: 1.2 }
+          ] },
+        { title: "矩阵变换：空间扭曲", tag: "Transformation", module: "矩阵变换",
+          text: "矩阵乘法本质上是对空间的变换（旋转、拉伸、剪切）。",
+          analogy: "🌀 类比：想象整个房间是一个果冻。矩阵就是那个让果冻发生扭曲、旋转或压扁的手。",
+          cubes: [
+            { color: '#9b59b6', x: -40, y: -40, z: 0 },
+            { color: '#9b59b6', x: 40, y: -40, z: 0 },
+            { color: '#9b59b6', x: -40, y: 40, z: 0 },
+            { color: '#9b59b6', x: 40, y: 40, z: 0 },
+            { color: '#f39c12', x: 0, y: 0, z: 0, scale: 1.5 }
+          ] },
+        { title: "行列式：空间的缩放因子", tag: "Determinant", module: "行列式",
+          text: "行列式是一个标量，它表示线性变换对空间体积的缩放比例。",
+          analogy: "📏 类比：如果行列式是 2，说明变换后空间的体积变成了原来的 2 倍；如果是 0，说明空间被压扁了，体积为 0。",
+          cubes: [
+            { color: '#1abc9c', x: 0, y: 0, z: 0, scale: 2.0 },
+            { color: '#e67e22', x: 80, y: 0, z: 0, scale: 0.5 }
+          ] },
+        { title: "特征向量：变换中的不变量", tag: "Eigenvector", module: "特征值",
+          text: "特征向量是在线性变换下方向保持不变的向量。",
+          analogy: "🧭 类比：想象一个地球仪在旋转。只有南北极的轴心（特征向量）在旋转中保持不动，其他点都在动。",
+          cubes: [
+            { color: '#3498db', x: 0, y: 0, z: -80 },
+            { color: '#3498db', x: 0, y: 0, z: 80 },
+            { color: '#e74c3c', x: 60, y: 0, z: 0 },
+            { color: '#e74c3c', x: -60, y: 0, z: 0 },
+            { color: '#e74c3c', x: 0, y: 60, z: 0 }
+          ] },
+        { title: "特征值：拉伸的倍数", tag: "Eigenvalue", module: "特征值",
+          text: "特征值表示特征向量在变换后被拉伸或压缩的倍数。",
+          analogy: "📏 类比：如果特征值是 2，说明这个方向的轴心被拉长了 2 倍；如果是 0.5，说明被压缩了一半。",
+          cubes: [
+            { color: '#3498db', x: 0, y: 0, z: -120, scale: 1.5 },
+            { color: '#3498db', x: 0, y: 0, z: 120, scale: 1.5 },
+            { color: '#2ecc71', x: 0, y: 0, z: -40, scale: 0.5 },
+            { color: '#2ecc71', x: 0, y: 0, z: 40, scale: 0.5 }
+          ] },
+        { title: "正交投影：影子的魔法", tag: "Orthogonal Projection", module: "正交投影",
+          text: "正交投影是将一个向量映射到另一个向量或子空间上的操作，结果是原向量在该方向上的\"影子\"。",
+          analogy: "🌞 类比：太阳光垂直照射，物体在地面上的影子就是正交投影。影子的长度取决于物体与地面的夹角。",
+          cubes: [
+            { color: '#f1c40f', x: 0, y: 60, z: 0 },
+            { color: '#95a5a6', x: 0, y: 0, z: 0 },
+            { color: '#95a5a6', x: 60, y: 0, z: 0 },
+            { color: '#95a5a6', x: -60, y: 0, z: 0 },
+            { color: '#95a5a6', x: 0, y: 60, z: 0 }
+          ] },
+        { title: "线性方程组：寻找目标", tag: "Linear System", module: "方程组",
+          text: "线性方程组 Ax = b 的本质是：已知变换 A 和目标 b，求原始向量 x。",
+          analogy: "🎯 类比：已知施工方案 A 和目标建筑 b，问：原来的建筑 x 是什么？",
+          cubes: [
+            { color: '#e74c3c', x: -60, y: 0, z: 0 },
+            { color: '#2ecc71', x: 60, y: 0, z: 0 },
+            { color: '#f1c40f', x: 0, y: 60, z: 0 }
+          ] },
+        { title: "无解：目标 unreachable", tag: "No Solution", module: "方程组",
+          text: "如果目标向量 b 不在矩阵 A 的列空间里，方程组无解。",
+          analogy: "🚫 类比：你想用红绿两种积木拼出一个蓝色的目标，但红绿积木永远拼不出蓝色。",
+          cubes: [
+            { color: '#e74c3c', x: -40, y: 0, z: 0 },
+            { color: '#2ecc71', x: 40, y: 0, z: 0 },
+            { color: '#3498db', x: 0, y: 60, z: 60 }
+          ] },
+        { title: "唯一解：完美匹配", tag: "Unique Solution", module: "方程组",
+          text: "如果矩阵 A 满秩且目标 b 在列空间内，方程组有唯一解。",
+          analogy: "✅ 类比：你有一组完整的基底积木，目标 b 可以被唯一地拼出来。",
+          cubes: [
+            { color: '#e74c3c', x: -40, y: 0, z: 0 },
+            { color: '#2ecc71', x: 40, y: 0, z: 0 },
+            { color: '#3498db', x: 0, y: 0, z: 40 },
+            { color: '#f1c40f', x: 0, y: 40, z: 40 }
+          ] },
+        { title: "无穷多解：冗余的自由度", tag: "Infinite Solutions", module: "方程组",
+          text: "如果矩阵 A 不满秩（有冗余），且目标 b 在列空间内，方程组有无穷多解。",
+          analogy: "♾️ 类比：你有太多重复的积木，拼同一个目标可以有无数种拼法。",
+          cubes: [
+            { color: '#e74c3c', x: -40, y: 0, z: 0 },
+            { color: '#e74c3c', x: 0, y: 0, z: 0 },
+            { color: '#e74c3c', x: 40, y: 0, z: 0 },
+            { color: '#f1c40f', x: 0, y: 40, z: 0 }
+          ] },
+        { title: "可逆矩阵：信息无损", tag: "Invertible", module: "可逆性",
+          text: "可逆矩阵对应的变换是双射，信息没有丢失，可以完美还原。",
+          analogy: "🔄 类比：像旋转、平移这样的操作，你可以反向操作回到原点。",
+          cubes: [
+            { color: '#9b59b6', x: -40, y: -40, z: 0 },
+            { color: '#9b59b6', x: 40, y: -40, z: 0 },
+            { color: '#9b59b6', x: -40, y: 40, z: 0 },
+            { color: '#9b59b6', x: 40, y: 40, z: 0 }
+          ] },
+        { title: "不可逆矩阵：信息丢失", tag: "Singular", module: "可逆性",
+          text: "不可逆矩阵（行列式为 0）对应的变换会丢失信息，无法还原。",
+          analogy: "💥 类比：像把三维物体压成二维平面，高度的信息就永远丢失了。",
+          cubes: [
+            { color: '#e74c3c', x: -40, y: -40, z: 0 },
+            { color: '#e74c3c', x: 40, y: -40, z: 0 },
+            { color: '#e74c3c', x: -40, y: 40, z: 0 },
+            { color: '#e74c3c', x: 40, y: 40, z: 0 }
+          ] },
+        { title: "逻辑总览：从积木到宇宙", tag: "The Big Picture", module: "总览",
+          text: "线性代数的终极目标，是从繁杂的表象中，找到支撑世界的最简骨架。",
+          analogy: "🌌 类比：世界看似复杂，但本质是简单的。向量是积木，矩阵是规则，秩是骨架。我们用这套语言，去理解、构建甚至还原这个宇宙。",
+          cubes: [
+            { color: '#e74c3c', x: -80, y: -80, z: -80 },
+            { color: '#2ecc71', x: 80, y: -80, z: -80 },
+            { color: '#3498db', x: -80, y: 80, z: -80 },
+            { color: '#f1c40f', x: 80, y: 80, z: -80 },
+            { color: '#9b59b6', x: -80, y: -80, z: 80 },
+            { color: '#e67e22', x: 80, y: -80, z: 80 },
+            { color: '#1abc9c', x: -80, y: 80, z: 80 },
+            { color: '#34495e', x: 80, y: 80, z: 80 },
+            { color: '#ecf0f1', x: 0, y: 0, z: 0, scale: 1.5 }
+          ] }
+    ];
+
+    const moduleColors = {
+        '向量': '#e74c3c',
+        '线性相关': '#e67e22',
+        '基底与维数': '#2ecc71',
+        '秩': '#9b59b6',
+        '矩阵变换': '#1abc9c',
+        '行列式': '#f39c12',
+        '特征值': '#3498db',
+        '正交投影': '#f1c40f',
+        '方程组': '#e74c3c',
+        '可逆性': '#8e44ad',
+        '总览': '#2c3e50'
+    };
+
+    // ==================== 状态 ====================
+    let currentPage = 0;
+    let visitedPages = new Set([0]);
+
+    // ==================== 渲染函数 ====================
+
+    function renderCubes(cubes) {
+        const scene = document.getElementById('scene');
+        document.querySelectorAll('.cube').forEach(el => el.remove());
+
+        cubes.forEach(cubeData => {
+            const cube = document.createElement('div');
+            cube.className = 'cube';
+            const size = 40 * (cubeData.scale || 1);
+            const x = cubeData.x || 0;
+            const y = cubeData.y || 0;
+            const z = cubeData.z || 0;
+
+            cube.style.width = size + 'px';
+            cube.style.height = size + 'px';
+            cube.style.marginLeft = -size/2 + 'px';
+            cube.style.marginTop = -size/2 + 'px';
+            cube.style.transform = `translate3d(${x}px, ${y}px, ${z}px)`;
+
+            const faces = ['front', 'back', 'right', 'left', 'top', 'bottom'];
+            faces.forEach(faceName => {
+                const face = document.createElement('div');
+                face.className = 'face ' + faceName;
+                face.style.width = size + 'px';
+                face.style.height = size + 'px';
+                face.style.background = cubeData.color || '#3498db';
+                cube.appendChild(face);
+            });
+
+            scene.appendChild(cube);
+        });
+    }
+
+    function renderNavMap(activeIndex) {
+        const grid = document.getElementById('navGrid');
+        grid.innerHTML = '';
+
+        // 按模块分组显示
+        let currentModule = '';
+        let moduleItems = [];
+
+        pages.forEach((page, index) => {
+            if (page.module !== currentModule) {
+                // 如果已经有积攒的模块项，先渲染
+                if (moduleItems.length > 0) {
+                    renderModuleRow(grid, currentModule, moduleItems, activeIndex);
+                    moduleItems = [];
+                }
+                currentModule = page.module;
+            }
+            moduleItems.push({ page, index });
+        });
+
+        // 渲染最后一个模块
+        if (moduleItems.length > 0) {
+            renderModuleRow(grid, currentModule, moduleItems, activeIndex);
+        }
+
+        // 更新统计
+        document.getElementById('exploredCount').textContent = visitedPages.size;
+        document.getElementById('totalCount').textContent = pages.length;
+
+        // 滚动到当前项
+        const activeEl = grid.querySelector('.nav-item.active');
+        if (activeEl) {
+            setTimeout(() => {
+                activeEl.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+            }, 100);
+        }
+    }
+
+    function renderModuleRow(grid, moduleName, items, activeIndex) {
+        const row = document.createElement('div');
+        row.className = 'module-row';
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'module-name';
+        const color = moduleColors[moduleName] || '#999';
+        nameSpan.style.color = color;
+        nameSpan.textContent = moduleName;
+        row.appendChild(nameSpan);
+
+        items.forEach(({ page, index }) => {
+            const isActive = index === activeIndex;
+            const isVisited = visitedPages.has(index);
+
+            const item = document.createElement('span');
+            item.className = 'nav-item';
+            if (isActive) item.classList.add('active');
+            if (isVisited && !isActive) item.classList.add('visited');
+
+            const dotColor = moduleColors[page.module] || '#999';
+
+            item.innerHTML = `
+                <span class="dot" style="background:${dotColor};"></span>
+                <span class="label">${page.tag}</span>
+                <span class="badge">${index + 1}</span>
+            `;
+
+            item.addEventListener('click', () => goToPage(index));
+            row.appendChild(item);
+        });
+
+        grid.appendChild(row);
+    }
+
+    function updatePage(index) {
+        const page = pages[index];
+        if (!page) return;
+
+        document.getElementById('text-content').innerHTML = `
+            <h2>${page.title}</h2>
+            <div class="concept-tag">${page.tag}</div>
+            <p>${page.text}</p>
+            <div class="analogy">${page.analogy}</div>
+        `;
+
+        document.getElementById('currentNum').textContent = index + 1;
+        document.getElementById('totalNum').textContent = pages.length;
+        document.getElementById('btnPrev').disabled = index === 0;
+        document.getElementById('btnNext').disabled = index === pages.length - 1;
+
+        visitedPages.add(index);
+        renderCubes(page.cubes);
+        renderNavMap(index);
+    }
+
+    function goToPage(index) {
+        if (index < 0 || index >= pages.length) return;
+        currentPage = index;
+        updatePage(currentPage);
+    }
+
+    function nextStep() {
+        if (currentPage < pages.length - 1) goToPage(currentPage + 1);
+    }
+
+    function prevStep() {
+        if (currentPage > 0) goToPage(currentPage - 1);
+    }
+
+    // ==================== 3D 交互 ====================
+
+    let isDragging = false;
+    let prevX = 0, prevY = 0;
+    let rotX = 25, rotY = -30;
+    const scene = document.getElementById('scene');
+    const view3D = document.getElementById('view3D');
+
+    view3D.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        prevX = e.clientX;
+        prevY = e.clientY;
+        view3D.style.cursor = 'grabbing';
+    });
+
+    window.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        const deltaX = e.clientX - prevX;
+        const deltaY = e.clientY - prevY;
+        rotY += deltaX * 0.5;
+        rotX += deltaY * 0.5;
+        rotX = Math.max(-90, Math.min(90, rotX));
+        scene.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg)`;
+        prevX = e.clientX;
+        prevY = e.clientY;
+    });
+
+    window.addEventListener('mouseup', () => {
+        isDragging = false;
+        view3D.style.cursor = 'grab';
+    });
+
+    let touchStartX = 0, touchStartY = 0;
+    view3D.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 1) {
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+        }
+    }, { passive: true });
+
+    view3D.addEventListener('touchmove', (e) => {
+        if (e.touches.length === 1) {
+            e.preventDefault();
+            const deltaX = e.touches[0].clientX - touchStartX;
+            const deltaY = e.touches[0].clientY - touchStartY;
+            rotY += deltaX * 0.5;
+            rotX += deltaY * 0.5;
+            rotX = Math.max(-90, Math.min(90, rotX));
+            scene.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg)`;
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+        }
+    }, { passive: false });
+
+    // ==================== 键盘 ====================
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'ArrowDown') {
+            e.preventDefault();
+            nextStep();
+        } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            prevStep();
+        } else if (e.key >= '1' && e.key <= '9') {
+            const num = parseInt(e.key) - 1;
+            if (num < pages.length) goToPage(num);
+        }
+    });
+
+    // ==================== 初始化 ====================
+
+    goToPage(0);
+</script>
+</body>
+</html>
